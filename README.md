@@ -9,6 +9,9 @@ Manage client records, review security indicators, organize files, track startup
 [![Node.js](https://img.shields.io/badge/Node.js-20%2B-339933?logo=nodedotjs&logoColor=white)](https://nodejs.org/)
 [![Express](https://img.shields.io/badge/Express-5-000000?logo=express&logoColor=white)](https://expressjs.com/)
 [![JavaScript](https://img.shields.io/badge/JavaScript-ES2022%2B-F7DF1E?logo=javascript&logoColor=000000)](https://developer.mozilla.org/docs/Web/JavaScript)
+[![Rust](https://img.shields.io/badge/Rust-CSV%20CLI-000000?logo=rust&logoColor=white)](https://www.rust-lang.org/)
+[![Python](https://img.shields.io/badge/Python-CSV%20CLI-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![Dart](https://img.shields.io/badge/Dart-Health%20client-0175C2?logo=dart&logoColor=white)](https://dart.dev/)
 [![License: ISC](https://img.shields.io/badge/License-ISC-blue.svg)](./package.json)
 
 [Explore the features](#features) · [Run locally](#run-locally) · [Technology stack](#technology-stack) · [Security notes](#security-and-deployment)
@@ -37,7 +40,7 @@ Select a preview image to open its locally hosted MP4:
 - **Public website checkup** — an owner-authorized, single-request HTTP(S) availability and response-header check. It does not crawl, scan ports, follow redirects, or perform a penetration test.
 - **Private CSV summary** — analyze a CSV in the browser to count records and identify email/company totals and row completeness. Input stays in the browser; maximum file size is 5 MB and maximum data rows is 100,000.
 - **Optional AI assistant** — connect an OpenAI-compatible provider through server-side environment configuration.
-- **Engineering roadmap** — a visual overview distinguishes the current JavaScript foundation from potential future Rust, Python, Haskell, and Dart work.
+- **Polyglot companion tools** — standalone Rust and Python CSV utilities and a Dart health-check client complement the Node.js web app; Haskell remains an exploration item.
 
 ## Technology stack
 
@@ -48,24 +51,45 @@ Select a preview image to open its locally hosted MP4:
 | **JavaScript (ES2022+)** | Express server and interactive browser application |
 | **HTML5** | Semantic page structure and accessible forms |
 | **CSS3** | Responsive layout, visual design, and animations |
+| **Rust** | Standalone CSV structure and formula-risk auditor |
+| **Python 3** | Standalone local CSV client-summary utility |
+| **Dart 3** | Standalone bounded-time HTTP health-check client |
 | **JSON** | Application configuration and local development data |
 | **PowerShell** | Windows setup and command examples |
 | **Markdown** | Project and developer documentation |
 
-### Exploratory language roadmap
+### Companion tools
 
-The public technology section and private dashboard show these as **future exploration**, not active project dependencies or implemented services:
+Rust, Python, and Dart tools are real, runnable source code in `tools/`. They run independently on your computer; they are **not** required by or launched as services in the Node.js web app or Render deployment.
 
-| Language | Potential direction | Status |
-| --- | --- | --- |
-| [Rust](https://www.rust-lang.org/) | High-performance security utilities | Exploratory |
-| [Python](https://www.python.org/) | Analytics and data-processing services | Exploratory |
-| [Haskell](https://www.haskell.org/) | Typed policy and verification tooling | Exploratory |
-| [Dart](https://dart.dev/) | Cross-platform mobile companion | Exploratory |
+#### Rust CSV auditor
 
-The application currently runs on JavaScript/Node.js with HTML and CSS. No Rust, Python, Haskell, or Dart service or package is included yet.
+Checks CSV quoting and row structure, counts formula-like cells for review, and enforces a 5 MiB / 100,000-row limit. It never uploads or edits the source file.
 
-### Runtime and libraries
+```powershell
+cargo test --manifest-path tools\rust-csv-audit\Cargo.toml
+cargo run --manifest-path tools\rust-csv-audit\Cargo.toml -- .\clients.csv
+```
+
+#### Python client CSV summary
+
+Counts client rows, unique email contacts and companies, and complete rows. It uses Python's standard library and prints aggregate counts, not client-cell values.
+
+```powershell
+python tools\python-csv-summary\csv_summary.py .\clients.csv
+python -m unittest discover -s tools\python-csv-summary -p "test_*.py"
+```
+
+#### Dart health-check client
+
+Requests the app's `/api/health` endpoint with a timeout, no redirect following, and a response-size limit. It is an unauthenticated service-health request; only check a server you operate or are authorized to contact.
+
+```powershell
+Set-Location tools\dart-health-client
+dart run bin\health_check.dart http://localhost:3000
+```
+
+### Web application runtime and libraries
 
 - **Node.js 20+** with **Express 5**
 - `express-session` for session-based authentication
@@ -114,6 +138,8 @@ npm run dev
 ```powershell
 npm test
 ```
+
+`npm test` includes the server/client JavaScript syntax checks and Node.js regression tests for storage recovery, CSV handling, safe exports, and role-based write permissions.
 
 ## Deploy to Render
 

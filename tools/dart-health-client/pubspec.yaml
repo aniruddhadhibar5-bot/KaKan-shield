@@ -1,0 +1,6 @@
+name: sentinel_health_client
+description: A small, bounded-time HTTP health-check client for Sentinel Business Shield.
+version: 0.1.0
+publish_to: none
+environment:
+  sdk: ^3.0.0

@@ -119,46 +119,46 @@
           <div class="technology-intro">
             <div class="eyebrow">ENGINEERING FOUNDATION · POLYGLOT ROADMAP</div>
             <h2>Built on a clear foundation.<br /><span>Ready to grow thoughtfully.</span></h2>
-            <p>The current product runs on JavaScript, Node.js, HTML, and CSS. Rust, Python, Haskell, and Dart are presented as future engineering directions—not as runtimes currently powering this app.</p>
+            <p>The web app runs on JavaScript, Node.js, HTML, and CSS. Rust and Python provide standalone CSV tools, while Dart provides a standalone API health-check client. These companions do not run as hosted web services.</p>
           </div>
           <div class="technology-grid">
             <article class="technology-card technology-active">
-              <div class="technology-card-top"><span class="technology-symbol js-symbol">JS</span><span class="technology-status active">IN USE</span></div>
+              <div class="technology-card-top"><span class="technology-symbol js-symbol">JS</span><span class="technology-status active">APP CORE</span></div>
               <h3>JavaScript</h3>
               <p>Web interface and Node.js application server.</p>
               <span class="technology-track"><i style="--track:100%"></i></span>
-              <small>CORE APPLICATION</small>
+              <small>WEB APPLICATION</small>
             </article>
             <article class="technology-card">
-              <div class="technology-card-top"><span class="technology-symbol rust-symbol">R</span><span class="technology-status planned">FUTURE</span></div>
+              <div class="technology-card-top"><span class="technology-symbol rust-symbol">R</span><span class="technology-status tool">CLI TOOL</span></div>
               <h3>Rust</h3>
-              <p>Potential high-performance security utilities.</p>
+              <p>Local CSV structure and formula-risk auditor.</p>
               <span class="technology-track"><i style="--track:32%"></i></span>
-              <small>EXPLORATION</small>
+              <small>STANDALONE COMPANION</small>
             </article>
             <article class="technology-card">
-              <div class="technology-card-top"><span class="technology-symbol python-symbol">Py</span><span class="technology-status planned">FUTURE</span></div>
+              <div class="technology-card-top"><span class="technology-symbol python-symbol">Py</span><span class="technology-status tool">CLI TOOL</span></div>
               <h3>Python</h3>
-              <p>Potential analytics and data-processing services.</p>
+              <p>Private local client CSV analysis and summaries.</p>
               <span class="technology-track"><i style="--track:28%"></i></span>
-              <small>EXPLORATION</small>
+              <small>STANDALONE COMPANION</small>
             </article>
             <article class="technology-card">
-              <div class="technology-card-top"><span class="technology-symbol haskell-symbol">λ</span><span class="technology-status planned">FUTURE</span></div>
+              <div class="technology-card-top"><span class="technology-symbol haskell-symbol">λ</span><span class="technology-status roadmap">ROADMAP</span></div>
               <h3>Haskell</h3>
-              <p>Potential typed policy and verification tooling.</p>
+              <p>Typed policy and verification tooling exploration.</p>
               <span class="technology-track"><i style="--track:18%"></i></span>
               <small>EXPLORATION</small>
             </article>
             <article class="technology-card">
-              <div class="technology-card-top"><span class="technology-symbol dart-symbol">D</span><span class="technology-status planned">FUTURE</span></div>
+              <div class="technology-card-top"><span class="technology-symbol dart-symbol">D</span><span class="technology-status tool">API CLIENT</span></div>
               <h3>Dart</h3>
-              <p>Potential cross-platform mobile companion.</p>
+              <p>Bounded-time client for the app health endpoint.</p>
               <span class="technology-track"><i style="--track:24%"></i></span>
-              <small>EXPLORATION</small>
+              <small>STANDALONE COMPANION</small>
             </article>
           </div>
-          <div class="technology-footnote"><span aria-hidden="true">✦</span> Roadmap ideas are exploratory and do not imply that these languages are already integrated.</div>
+          <div class="technology-footnote"><span aria-hidden="true">✦</span> Companion tools run separately on your computer; they are not part of the hosted Node.js service.</div>
         </section>
 
         <section id="personal-checkup" class="landing-section checkup-section">
@@ -374,6 +374,7 @@
               </div>
               <div class="workspace-live"><span class="workspace-live-dot"></span><span>Workspace ready</span><small>PRIVATE SESSION</small></div>
             </div>
+            <p id="readOnlyNotice" class="workspace-permission-note hidden">Read-only workspace access · Contact an administrator to make changes.</p>
             <div class="hero-row">
               <div class="hero-card highlight">
                 <div class="tiny-label" id="scoreLabel">Score</div>
@@ -415,14 +416,14 @@
                 <div class="roadmap-card-copy">
                   <div class="section-tag">ENGINEERING DIRECTION</div>
                   <h3 id="workspaceTechHeading">A polyglot roadmap, built on today's foundation.</h3>
-                  <p>The current app uses JavaScript, Node.js, HTML, and CSS. Additional languages below are future exploration areas, not integrated services.</p>
+                  <p>The web app runs on JavaScript. Rust, Python, and Dart companion tools are available to run locally; they are not hosted services.</p>
                 </div>
                 <div class="workspace-tech-list" aria-label="Current and exploratory programming languages">
                   <span class="workspace-tech current"><b>JS</b> JavaScript <small>IN USE</small></span>
-                  <span class="workspace-tech planned"><b>R</b> Rust <small>FUTURE</small></span>
-                  <span class="workspace-tech planned"><b>Py</b> Python <small>FUTURE</small></span>
-                  <span class="workspace-tech planned"><b>λ</b> Haskell <small>FUTURE</small></span>
-                  <span class="workspace-tech planned"><b>D</b> Dart <small>FUTURE</small></span>
+                  <span class="workspace-tech tool"><b>R</b> Rust <small>CLI TOOL</small></span>
+                  <span class="workspace-tech tool"><b>Py</b> Python <small>CLI TOOL</small></span>
+                  <span class="workspace-tech planned"><b>λ</b> Haskell <small>ROADMAP</small></span>
+                  <span class="workspace-tech tool"><b>D</b> Dart <small>API CLIENT</small></span>
                 </div>
               </section>
             </div>

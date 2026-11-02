@@ -3,9 +3,20 @@
   strings: {},
   dashboard: null,
   isAuthenticated: false,
+  userRole: 'viewer',
   authMode: 'login',
   chatMessages: []
 };
+
+function canManageWorkspace() {
+  return ['admin', 'ops'].includes(state.userRole);
+}
+
+function setWorkspaceRole(role) {
+  state.userRole = role || 'viewer';
+  document.getElementById('dashboardShell').classList.toggle('read-only', !canManageWorkspace());
+  document.getElementById('readOnlyNotice').classList.toggle('hidden', canManageWorkspace());
+}
 
 const tabMap = {
   overview: document.getElementById('overviewView'),
@@ -539,15 +550,15 @@ function renderFileVault(files) {
   list.innerHTML = (files || []).map((file) => `
     <div class="file-row">
       <div class="file-main">
-        <strong>${file.name}</strong>
-        <div class="alert-details">Owner: ${file.owner} · Size: ${file.size} · Updated: ${file.updated}</div>
+        <strong>${escapeHTML(file.name)}</strong>
+        <div class="alert-details">Owner: ${escapeHTML(file.owner)} · Size: ${escapeHTML(file.size)} · Updated: ${escapeHTML(file.updated)}</div>
         <div class="file-preview">
-          ${(file.preview || []).slice(0, 3).map((row) => `<span>${row.join(' | ')}</span>`).join('')}
+          ${(file.preview || []).slice(0, 3).map((row) => `<span>${(Array.isArray(row) ? row : [row]).map(escapeHTML).join(' | ')}</span>`).join('')}
         </div>
       </div>
       <div class="file-actions">
-        <span class="status-tag ${file.status === 'Encrypted' ? 'encrypted' : 'protected'}">${file.status}</span>
-        <button class="mini-btn" data-file-id="${file.id}" type="button">${file.status === 'Encrypted' ? 'Unprotect' : 'Protect'}</button>
+        <span class="status-tag ${file.status === 'Encrypted' ? 'encrypted' : 'protected'}">${escapeHTML(file.status)}</span>
+        ${canManageWorkspace() ? `<button class="mini-btn" data-file-id="${escapeHTML(file.id)}" type="button">${file.status === 'Encrypted' ? 'Unprotect' : 'Protect'}</button>` : ''}
       </div>
     </div>
   `).join('');
@@ -560,12 +571,12 @@ function renderClientList(clients) {
   list.innerHTML = (clients || []).map((client) => `
     <div class="client-row">
       <div>
-        <strong>${client.name}</strong>
-        <div class="alert-details">${client.industry} · ${client.region}</div>
+        <strong>${escapeHTML(client.name)}</strong>
+        <div class="alert-details">${escapeHTML(client.industry)} · ${escapeHTML(client.region)}</div>
       </div>
       <div class="client-meta">
-        <span class="status-tag ${client.status === 'Trusted' || client.status === 'Verified' ? 'success' : 'warning'}">${client.status}</span>
-        <span class="risk-tag ${client.risk.toLowerCase()}">${client.risk}</span>
+        <span class="status-tag ${client.status === 'Trusted' || client.status === 'Verified' ? 'success' : 'warning'}">${escapeHTML(client.status)}</span>
+        <span class="risk-tag ${['low', 'medium', 'high'].includes(String(client.risk).toLowerCase()) ? String(client.risk).toLowerCase() : 'unknown'}">${escapeHTML(client.risk)}</span>
       </div>
     </div>
   `).join('');
@@ -608,9 +619,9 @@ function renderManagement(data) {
           ${escapeHTML(task.priority)} priority · ${escapeHTML(task.status.replace('_', ' '))}
         </div>
       </div>
-      <button class="mini-btn" type="button" data-task-id="${escapeHTML(task.id)}" data-task-status="${task.status === 'done' ? 'planned' : task.status === 'planned' ? 'in_progress' : 'done'}">
+      ${canManageWorkspace() ? `<button class="mini-btn" type="button" data-task-id="${escapeHTML(task.id)}" data-task-status="${task.status === 'done' ? 'planned' : task.status === 'planned' ? 'in_progress' : 'done'}">
         ${task.status === 'done' ? 'Reopen' : task.status === 'planned' ? 'Start' : 'Complete'}
-      </button>
+      </button>` : ''}
     </div>
   `).join('') || '<p class="muted">No work items yet. Add one to get started.</p>';
 }
@@ -754,6 +765,7 @@ async function initSession() {
     const result = await fetchJson('/api/auth/me');
     if (result.user) {
       state.isAuthenticated = true;
+      setWorkspaceRole(result.user.role);
       await loadDashboard();
       return;
     }
@@ -762,6 +774,7 @@ async function initSession() {
   }
 
   state.isAuthenticated = false;
+  setWorkspaceRole('viewer');
   showDashboard(false);
 }
 
@@ -783,13 +796,14 @@ async function handleAuthSubmit(event) {
       ? { name, email, password }
       : { email, password };
 
-    await fetchJson(endpoint, {
+    const result = await fetchJson(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     });
 
     state.isAuthenticated = true;
+    setWorkspaceRole(result.user?.role);
     await loadDashboard();
   } catch (error) {
     errorMessage.textContent = error.message || 'Authentication failed';

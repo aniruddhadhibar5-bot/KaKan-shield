@@ -6,6 +6,7 @@ const multer = require('multer');
 const bcrypt = require('bcryptjs');
 const fs = require('fs');
 const path = require('path');
+const { randomUUID } = require('node:crypto');
 const dns = require('node:dns/promises');
 const http = require('node:http');
 const https = require('node:https');
@@ -79,22 +80,31 @@ function ensureDirectories() {
 
 function loadJson(filePath, fallback) {
   if (!fs.existsSync(filePath)) {
-    fs.writeFileSync(filePath, JSON.stringify(fallback, null, 2));
+    saveJson(filePath, fallback);
     return JSON.parse(JSON.stringify(fallback));
   }
 
   try {
     const raw = fs.readFileSync(filePath, 'utf8');
-    const parsed = raw ? JSON.parse(raw) : fallback;
-    return parsed;
+    if (!raw.trim()) throw new SyntaxError('The file is empty.');
+    return JSON.parse(raw);
   } catch (error) {
-    fs.writeFileSync(filePath, JSON.stringify(fallback, null, 2));
-    return JSON.parse(JSON.stringify(fallback));
+    throw new Error(`Unable to read valid JSON from ${filePath}; the existing file was left unchanged.`, { cause: error });
   }
 }
 
 function saveJson(filePath, value) {
-  fs.writeFileSync(filePath, JSON.stringify(value, null, 2));
+  const temporaryPath = path.join(
+    path.dirname(filePath),
+    `.${path.basename(filePath)}.${process.pid}.${randomUUID()}.tmp`
+  );
+  try {
+    fs.writeFileSync(temporaryPath, JSON.stringify(value, null, 2), { flag: 'wx' });
+    fs.renameSync(temporaryPath, filePath);
+  } catch (error) {
+    if (fs.existsSync(temporaryPath)) fs.unlinkSync(temporaryPath);
+    throw error;
+  }
 }
 
 function normalizeEmail(email) {
@@ -154,12 +164,64 @@ function formatBytes(bytes) {
 
 function readCsvPreview(filePath, maxRows = 8) {
   if (!fs.existsSync(filePath)) return [];
-  const content = fs.readFileSync(filePath, 'utf8').replace(/\r/g, '');
-  const lines = content.split('\n').filter((line) => line.trim() !== '').slice(0, maxRows);
-  return lines.map((line) => {
-    const cells = line.split(',');
-    return cells.map((cell) => cell.trim());
-  });
+  const content = fs.readFileSync(filePath, 'utf8').replace(/^\uFEFF/, '');
+  const rows = [];
+  let row = [];
+  let cell = '';
+  let quoted = false;
+  let afterQuote = false;
+
+  function finishCell() {
+    row.push(cell.trim());
+    cell = '';
+    afterQuote = false;
+  }
+
+  function finishRow() {
+    finishCell();
+    if (row.some((value) => value !== '')) rows.push(row);
+    row = [];
+  }
+
+  for (let index = 0; index < content.length && rows.length < maxRows; index += 1) {
+    const character = content[index];
+    if (quoted) {
+      if (character === '"' && content[index + 1] === '"') {
+        cell += '"';
+        index += 1;
+      } else if (character === '"') {
+        quoted = false;
+        afterQuote = true;
+      } else {
+        cell += character;
+      }
+    } else if (afterQuote && character === ',') {
+      finishCell();
+    } else if (afterQuote && (character === '\n' || character === '\r')) {
+      if (character === '\r' && content[index + 1] === '\n') index += 1;
+      finishRow();
+    } else if (afterQuote && /\s/.test(character)) {
+      continue;
+    } else if (afterQuote) {
+      throw new Error('CSV contains unexpected text after a quoted field.');
+    } else if (character === '"' && cell.trim() === '') {
+      cell = '';
+      quoted = true;
+    } else if (character === ',') {
+      finishCell();
+    } else if (character === '\n' || character === '\r') {
+      if (character === '\r' && content[index + 1] === '\n') index += 1;
+      finishRow();
+    } else if (character === '"') {
+      throw new Error('CSV contains a quote inside an unquoted field.');
+    } else {
+      cell += character;
+    }
+  }
+
+  if (quoted && rows.length < maxRows) throw new Error('CSV contains an unclosed quoted field.');
+  if (rows.length < maxRows && (cell || row.length || afterQuote)) finishRow();
+  return rows;
 }
 
 function generateId(prefix) {
@@ -175,7 +237,8 @@ function toCsv(rows) {
   if (!Array.isArray(rows) || !rows.length) return '';
   const headers = Object.keys(rows[0]);
   const escape = (value) => {
-    const str = String(value ?? '');
+    let str = String(value ?? '');
+    if (/^[\u0000-\u0020\u007f-\u009f\uFEFF]*[=+\-@]/.test(str)) str = `'${str}`;
     if (str.includes(',') || str.includes('"') || str.includes('\n')) {
       return `"${str.replace(/"/g, '""')}"`;
     }
@@ -903,7 +966,7 @@ app.get('/api/management', ensureAuthenticated, (_req, res) => {
   res.json(startupData);
 });
 
-app.put('/api/management/finance', ensureAuthenticated, (req, res) => {
+app.put('/api/management/finance', ensureAuthenticated, requireRole('admin', 'ops'), (req, res) => {
   const { cashBalance, monthlyExpenses, monthlyRevenue } = req.body || {};
   const values = [cashBalance, monthlyExpenses, monthlyRevenue];
   if (values.some((value) => typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 1e12)) {
@@ -915,7 +978,7 @@ app.put('/api/management/finance', ensureAuthenticated, (req, res) => {
   return res.json({ ok: true, finance: startupData.finance });
 });
 
-app.post('/api/management/tasks', ensureAuthenticated, (req, res) => {
+app.post('/api/management/tasks', ensureAuthenticated, requireRole('admin', 'ops'), (req, res) => {
   const title = String(req.body?.title || '').trim();
   const priority = String(req.body?.priority || 'medium').toLowerCase();
   if (!title || title.length > 160 || !['low', 'medium', 'high'].includes(priority)) {
@@ -934,7 +997,7 @@ app.post('/api/management/tasks', ensureAuthenticated, (req, res) => {
   return res.status(201).json({ ok: true, task });
 });
 
-app.patch('/api/management/tasks/:id', ensureAuthenticated, (req, res) => {
+app.patch('/api/management/tasks/:id', ensureAuthenticated, requireRole('admin', 'ops'), (req, res) => {
   const task = startupData.tasks.find((item) => item.id === req.params.id);
   if (!task) {
     return res.status(404).json({ ok: false, message: 'Work item not found.' });
@@ -1037,7 +1100,7 @@ app.get('/api/exports/files.csv', ensureAuthenticated, requireRole('admin', 'ops
   res.send(csv);
 });
 
-app.post('/api/files/upload', ensureAuthenticated, (req, res) => {
+app.post('/api/files/upload', ensureAuthenticated, requireRole('admin', 'ops'), (req, res) => {
   upload.single('file')(req, res, (error) => {
     if (error) {
       return res.status(400).json({ ok: false, message: error.message || 'File upload failed' });
@@ -1048,7 +1111,13 @@ app.post('/api/files/upload', ensureAuthenticated, (req, res) => {
       return res.status(400).json({ ok: false, message: 'CSV file is required' });
     }
 
-    const preview = readCsvPreview(uploadedFile.path, 8);
+    let preview;
+    try {
+      preview = readCsvPreview(uploadedFile.path, 8);
+    } catch (parseError) {
+      fs.unlinkSync(uploadedFile.path);
+      return res.status(400).json({ ok: false, message: parseError.message || 'The CSV file is malformed.' });
+    }
     const entry = {
       id: generateId('file'),
       name: uploadedFile.originalname,
@@ -1067,7 +1136,7 @@ app.post('/api/files/upload', ensureAuthenticated, (req, res) => {
   });
 });
 
-app.post('/api/files/:id/secure', ensureAuthenticated, (req, res) => {
+app.post('/api/files/:id/secure', ensureAuthenticated, requireRole('admin', 'ops'), (req, res) => {
   const file = fileVault.find((item) => item.id === req.params.id);
   if (!file) {
     return res.status(404).json({ ok: false, message: 'File not found' });
@@ -1088,20 +1157,35 @@ app.get('/api/clients', ensureAuthenticated, (_req, res) => {
   });
 });
 
-app.post('/api/clients', ensureAuthenticated, (req, res) => {
-  const { name, industry, owner, region, status, risk } = req.body || {};
-  if (!name || !industry) {
-    return res.status(400).json({ ok: false, message: 'Client name and industry are required' });
+app.post('/api/clients', ensureAuthenticated, requireRole('admin', 'ops'), (req, res) => {
+  const { name, industry } = req.body || {};
+  const owner = String(req.body?.owner || req.session.user.name).trim();
+  const region = String(req.body?.region || 'Global').trim();
+  const status = String(req.body?.status || 'Verified');
+  const risk = String(req.body?.risk || 'Low');
+  if (
+    typeof name !== 'string'
+    || !name.trim()
+    || name.trim().length > 120
+    || typeof industry !== 'string'
+    || !industry.trim()
+    || industry.trim().length > 100
+    || owner.length > 100
+    || region.length > 100
+    || !['Trusted', 'Needs review', 'Verified'].includes(status)
+    || !['Low', 'Medium', 'High'].includes(risk)
+  ) {
+    return res.status(400).json({ ok: false, message: 'Provide a valid client name, industry, owner, region, status, and risk level.' });
   }
 
   const client = {
     id: generateId('client'),
-    name: String(name).trim(),
+    name: name.trim(),
     industry: String(industry).trim(),
-    owner: owner || req.session.user.name,
-    region: region || 'Global',
-    status: status || 'Verified',
-    risk: risk || 'Low'
+    owner,
+    region,
+    status,
+    risk
   };
 
   clients.unshift(client);
@@ -1162,6 +1246,10 @@ app.use((error, _req, res, _next) => {
   return res.status(500).json({ ok: false, message: 'Internal server error' });
 });
 
-app.listen(port, () => {
-  console.log(`Sentinel Business Shield running on http://localhost:${port}`);
-});
+if (require.main === module) {
+  app.listen(port, () => {
+    console.log(`Sentinel Business Shield running on http://localhost:${port}`);
+  });
+}
+
+module.exports = { app, loadJson, saveJson, readCsvPreview, toCsv };

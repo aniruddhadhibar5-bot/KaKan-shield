@@ -1,7 +1,10 @@
 node_modules/
+__pycache__/
+*.py[cod]
 .env
 .env.*
 !.env.example
 .DS_Store
 npm-debug.log*
 /data/
+/tools/rust-csv-audit/target/
