@@ -1,0 +1,29 @@
+{
+  "name": "kokan-shield",
+  "version": "2.0.0",
+  "description": "Sentinel Business Shield secure startup operations platform",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "test": "node --check server.js && node --check public/app.js"
+  },
+  "keywords": [
+    "security",
+    "startup",
+    "dashboard",
+    "csv",
+    "client-management"
+  ],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "express": "^5.1.0",
+    "express-rate-limit": "^7.4.0",
+    "express-session": "^1.19.0",
+    "helmet": "^8.0.0",
+    "multer": "^2.0.2"
+  }
+}
