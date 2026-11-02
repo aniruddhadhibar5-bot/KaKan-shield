@@ -27,6 +27,7 @@
         </a>
         <nav class="public-links" aria-label="Main navigation">
           <a href="#how-it-works">How it works</a>
+          <a href="#technology-roadmap">Technology</a>
           <a href="#personal-checkup">Free checkup</a>
           <a href="#demo">Product tour</a>
           <a href="#about">About</a>
@@ -112,6 +113,52 @@
             <article class="step-card"><div class="step-number">02</div><div class="step-icon">◉</div><h3>See what matters</h3><p>Review security signals, access risks, business indicators, and operational priorities.</p><span class="step-line"></span></article>
             <article class="step-card"><div class="step-number">03</div><div class="step-icon">↗</div><h3>Move with intention</h3><p>Track team work, estimate runway from your numbers, and plan the next step with context.</p><span class="step-line"></span></article>
           </div>
+        </section>
+
+        <section id="technology-roadmap" class="landing-section technology-section">
+          <div class="technology-intro">
+            <div class="eyebrow">ENGINEERING FOUNDATION · POLYGLOT ROADMAP</div>
+            <h2>Built on a clear foundation.<br /><span>Ready to grow thoughtfully.</span></h2>
+            <p>The current product runs on JavaScript, Node.js, HTML, and CSS. Rust, Python, Haskell, and Dart are presented as future engineering directions—not as runtimes currently powering this app.</p>
+          </div>
+          <div class="technology-grid">
+            <article class="technology-card technology-active">
+              <div class="technology-card-top"><span class="technology-symbol js-symbol">JS</span><span class="technology-status active">IN USE</span></div>
+              <h3>JavaScript</h3>
+              <p>Web interface and Node.js application server.</p>
+              <span class="technology-track"><i style="--track:100%"></i></span>
+              <small>CORE APPLICATION</small>
+            </article>
+            <article class="technology-card">
+              <div class="technology-card-top"><span class="technology-symbol rust-symbol">R</span><span class="technology-status planned">FUTURE</span></div>
+              <h3>Rust</h3>
+              <p>Potential high-performance security utilities.</p>
+              <span class="technology-track"><i style="--track:32%"></i></span>
+              <small>EXPLORATION</small>
+            </article>
+            <article class="technology-card">
+              <div class="technology-card-top"><span class="technology-symbol python-symbol">Py</span><span class="technology-status planned">FUTURE</span></div>
+              <h3>Python</h3>
+              <p>Potential analytics and data-processing services.</p>
+              <span class="technology-track"><i style="--track:28%"></i></span>
+              <small>EXPLORATION</small>
+            </article>
+            <article class="technology-card">
+              <div class="technology-card-top"><span class="technology-symbol haskell-symbol">λ</span><span class="technology-status planned">FUTURE</span></div>
+              <h3>Haskell</h3>
+              <p>Potential typed policy and verification tooling.</p>
+              <span class="technology-track"><i style="--track:18%"></i></span>
+              <small>EXPLORATION</small>
+            </article>
+            <article class="technology-card">
+              <div class="technology-card-top"><span class="technology-symbol dart-symbol">D</span><span class="technology-status planned">FUTURE</span></div>
+              <h3>Dart</h3>
+              <p>Potential cross-platform mobile companion.</p>
+              <span class="technology-track"><i style="--track:24%"></i></span>
+              <small>EXPLORATION</small>
+            </article>
+          </div>
+          <div class="technology-footnote"><span aria-hidden="true">✦</span> Roadmap ideas are exploratory and do not imply that these languages are already integrated.</div>
         </section>
 
         <section id="personal-checkup" class="landing-section checkup-section">
@@ -319,6 +366,14 @@
           </aside>
 
           <section class="content-panel">
+            <div class="workspace-intro">
+              <div>
+                <div class="eyebrow">SENTINEL WORKSPACE <span aria-hidden="true">/</span> OVERVIEW</div>
+                <h1>Good to see you. <span>Your business, in focus.</span></h1>
+                <p>Security signals, operational priorities, and business health in one view.</p>
+              </div>
+              <div class="workspace-live"><span class="workspace-live-dot"></span><span>Workspace ready</span><small>PRIVATE SESSION</small></div>
+            </div>
             <div class="hero-row">
               <div class="hero-card highlight">
                 <div class="tiny-label" id="scoreLabel">Score</div>
@@ -356,6 +411,20 @@
                   <div id="alertFeed" class="alert-feed"></div>
                 </div>
               </div>
+              <section class="data-card technology-roadmap-card" aria-labelledby="workspaceTechHeading">
+                <div class="roadmap-card-copy">
+                  <div class="section-tag">ENGINEERING DIRECTION</div>
+                  <h3 id="workspaceTechHeading">A polyglot roadmap, built on today's foundation.</h3>
+                  <p>The current app uses JavaScript, Node.js, HTML, and CSS. Additional languages below are future exploration areas, not integrated services.</p>
+                </div>
+                <div class="workspace-tech-list" aria-label="Current and exploratory programming languages">
+                  <span class="workspace-tech current"><b>JS</b> JavaScript <small>IN USE</small></span>
+                  <span class="workspace-tech planned"><b>R</b> Rust <small>FUTURE</small></span>
+                  <span class="workspace-tech planned"><b>Py</b> Python <small>FUTURE</small></span>
+                  <span class="workspace-tech planned"><b>λ</b> Haskell <small>FUTURE</small></span>
+                  <span class="workspace-tech planned"><b>D</b> Dart <small>FUTURE</small></span>
+                </div>
+              </section>
             </div>
 
             <div id="defenseView" class="tab-panel">

@@ -13,11 +13,13 @@ Manage client records, review security indicators, organize files, track startup
 
 [Explore the features](#features) · [Run locally](#run-locally) · [Technology stack](#technology-stack) · [Security notes](#security-and-deployment)
 
-<br />
-
-![Sentinel Business Shield landing page](./public/project-screenshot.png)
-
 </div>
+
+## Interface previews
+
+| Public website | Private workspace dashboard · sample data |
+| --- | --- |
+| <img src="./public/project-screenshot.png" alt="Sentinel Business Shield public landing page" width="100%" /> | <img src="./public/dashboard-screenshot.png" alt="Sentinel Business Shield private workspace dashboard" width="100%" /> |
 
 ## Project videos
 
@@ -35,6 +37,7 @@ Select a preview image to open its locally hosted MP4:
 - **Public website checkup** — an owner-authorized, single-request HTTP(S) availability and response-header check. It does not crawl, scan ports, follow redirects, or perform a penetration test.
 - **Private CSV summary** — analyze a CSV in the browser to count records and identify email/company totals and row completeness. Input stays in the browser; maximum file size is 5 MB and maximum data rows is 100,000.
 - **Optional AI assistant** — connect an OpenAI-compatible provider through server-side environment configuration.
+- **Engineering roadmap** — a visual overview distinguishes the current JavaScript foundation from potential future Rust, Python, Haskell, and Dart work.
 
 ## Technology stack
 
@@ -48,6 +51,19 @@ Select a preview image to open its locally hosted MP4:
 | **JSON** | Application configuration and local development data |
 | **PowerShell** | Windows setup and command examples |
 | **Markdown** | Project and developer documentation |
+
+### Exploratory language roadmap
+
+The public technology section and private dashboard show these as **future exploration**, not active project dependencies or implemented services:
+
+| Language | Potential direction | Status |
+| --- | --- | --- |
+| [Rust](https://www.rust-lang.org/) | High-performance security utilities | Exploratory |
+| [Python](https://www.python.org/) | Analytics and data-processing services | Exploratory |
+| [Haskell](https://www.haskell.org/) | Typed policy and verification tooling | Exploratory |
+| [Dart](https://dart.dev/) | Cross-platform mobile companion | Exploratory |
+
+The application currently runs on JavaScript/Node.js with HTML and CSS. No Rust, Python, Haskell, or Dart service or package is included yet.
 
 ### Runtime and libraries
 
