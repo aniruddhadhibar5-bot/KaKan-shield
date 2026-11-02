@@ -74,7 +74,9 @@ npm install
 npm start
 ```
 
-Open the public website at [http://localhost:3000](http://localhost:3000). The private workspace is available at [http://localhost:3000/workspace](http://localhost:3000/workspace).
+Once the server reports that it is running, open `http://localhost:3000` in a browser on the same computer. The private workspace is at `http://localhost:3000/workspace`.
+
+**Localhost is not a public website link.** It only works on the computer running this app after you run `npm start`; clicking a localhost address on GitHub will not start the server or open the hosted project for other people.
 
 The app creates local JSON data and an upload directory under `data/` on first run. For local development only, default demo accounts are created when no user database exists:
 
@@ -105,7 +107,7 @@ This repository includes a [`render.yaml`](./render.yaml) Blueprint configuratio
 2. In the [Render Dashboard](https://dashboard.render.com/), choose **New → Blueprint** and connect the repository.
 3. Before the first deploy, provide the prompted values for `INITIAL_ADMIN_NAME`, `INITIAL_ADMIN_EMAIL`, and `INITIAL_ADMIN_PASSWORD`. Use an email you control and a unique password with at least 12 characters. The admin account is created once in the persistent disk; keep these values safe.
 4. Review the Blueprint configuration and deploy. Render generates `SESSION_SECRET`; the service uses HTTPS, trusts Render's proxy, and checks `/api/health`.
-5. After deployment, open the `onrender.com` service URL and sign in at `/workspace`.
+5. After deployment, Render provides a public `onrender.com` service URL. Open that URL and sign in at `/workspace`. Share that deployed URL—not a localhost address—with other people.
 
 The local `data/` directory remains the default when `DATA_DIR` is unset; Render sets `DATA_DIR=/var/data` to use its persistent disk. Keep the disk attached and do not change its mount path if you want to retain existing application data. This deployment is configured for one running instance: sessions use Express's in-memory store, so scaling to multiple instances or using sessions that survive restarts requires a shared session store. Back up important data separately; a persistent disk is not a backup.
 
@@ -148,4 +150,5 @@ A custom company-domain sign-in URL requires a domain you control, DNS pointed a
 
 - **Creator:** Aniruddha Dhibar
 - **License:** ISC — see [`package.json`](./package.json)
-- **Local website:** [http://localhost:3000](http://localhost:3000)
+- **Local preview:** `http://localhost:3000` (available only while the app is running on your computer)
+- **Public deployment:** Deploy with Render using the steps above; Render provides the public URL after deployment.
