@@ -4,7 +4,7 @@ services:
     runtime: node
     plan: starter
     region: oregon
-    buildCommand: npm ci
+    buildCommand: npm ci && npm test && npm audit --omit=dev
     startCommand: npm start
     healthCheckPath: /api/health
     envVars:

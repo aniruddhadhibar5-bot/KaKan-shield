@@ -3,6 +3,9 @@
   "version": "2.0.0",
   "description": "Sentinel Business Shield secure startup operations platform",
   "main": "server.js",
+  "engines": {
+    "node": ">=22 <25"
+  },
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
@@ -24,6 +27,6 @@
     "express-rate-limit": "^7.4.0",
     "express-session": "^1.19.0",
     "helmet": "^8.0.0",
-    "multer": "^2.0.2"
+    "multer": "2.5.0"
   }
 }
