@@ -14,6 +14,8 @@ Manage client records, review security indicators, organize files, track startup
 [![Dart](https://img.shields.io/badge/Dart-Health%20client-0175C2?logo=dart&logoColor=white)](https://dart.dev/)
 [![License: ISC](https://img.shields.io/badge/License-ISC-blue.svg)](./package.json)
 
+[**Run locally:** http://localhost:3000](#run-locally) · [Open the workspace: http://localhost:3000/workspace](#run-locally)
+
 [Explore the features](#features) · [Run locally](#run-locally) · [Technology stack](#technology-stack) · [Security notes](#security-and-deployment)
 
 </div>
@@ -116,7 +118,7 @@ npm install
 npm start
 ```
 
-Once the server reports that it is running, open `http://localhost:3000` in a browser on the same computer. The private workspace is at `http://localhost:3000/workspace`.
+Once the server reports that it is running, open [http://localhost:3000](http://localhost:3000) in a browser on the same computer. The private workspace is at [http://localhost:3000/workspace](http://localhost:3000/workspace).
 
 **Localhost is not a public website link.** It only works on the computer running this app after you run `npm start`; clicking a localhost address on GitHub will not start the server or open the hosted project for other people.
 
