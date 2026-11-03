@@ -35,8 +35,10 @@ Select a preview image to open its locally hosted MP4:
 ## Features
 
 - **Public product site** — responsive landing page, product information, locally served team photography, animated interface previews, and short demo videos.
-- **Private workspace** — account registration and sign-in protect dashboard and business-data routes.
+- **Private workspace** — sign-in protects dashboard and business-data routes; self-registration is available only in local development.
+- **Production access controls** — public account registration is disabled in production; workspace admins provision team accounts. Login and registration attempts are rate-limited.
 - **Startup operations** — manage clients, CSV-backed file records, team tasks, business indicators, and financial runway estimates.
+- **Encrypted storage** — JSON workspace records and uploaded CSV files are encrypted with AES-256-GCM before being written to disk; legacy plaintext data is migrated on startup.
 - **Public website checkup** — an owner-authorized, single-request HTTP(S) availability and response-header check. It does not crawl, scan ports, follow redirects, or perform a penetration test.
 - **Private CSV summary** — analyze a CSV in the browser to count records and identify email/company totals and row completeness. Input stays in the browser; maximum file size is 5 MB and maximum data rows is 100,000.
 - **Optional AI assistant** — connect an OpenAI-compatible provider through server-side environment configuration.
@@ -118,7 +120,7 @@ Once the server reports that it is running, open `http://localhost:3000` in a br
 
 **Localhost is not a public website link.** It only works on the computer running this app after you run `npm start`; clicking a localhost address on GitHub will not start the server or open the hosted project for other people.
 
-The app creates local JSON data and an upload directory under `data/` on first run. For local development only, default demo accounts are created when no user database exists:
+The app creates encrypted JSON data, an upload directory, and a local data-encryption key under `data/` on first run. Preserve the key with the data; without it, encrypted records cannot be recovered. For local development only, default demo accounts are created when no user database exists:
 
 | Email | Password |
 | --- | --- |
@@ -139,7 +141,7 @@ npm run dev
 npm test
 ```
 
-`npm test` includes the server/client JavaScript syntax checks and Node.js regression tests for storage recovery, CSV handling, safe exports, and role-based write permissions.
+`npm test` includes server/client JavaScript syntax checks and regression tests for encrypted storage, CSV handling, safe exports, authentication safeguards, and role-based write permissions. `npm audit` checks dependencies for known vulnerabilities.
 
 ## Deploy to Render
 
@@ -148,10 +150,14 @@ This repository includes a [`render.yaml`](./render.yaml) Blueprint configuratio
 1. Push the project to a GitHub repository.
 2. In the [Render Dashboard](https://dashboard.render.com/), choose **New → Blueprint** and connect the repository.
 3. Before the first deploy, provide the prompted values for `INITIAL_ADMIN_NAME`, `INITIAL_ADMIN_EMAIL`, and `INITIAL_ADMIN_PASSWORD`. Use an email you control and a unique password with at least 12 characters. The admin account is created once in the persistent disk; keep these values safe.
-4. Review the Blueprint configuration and deploy. Render generates `SESSION_SECRET`; the service uses HTTPS, trusts Render's proxy, and checks `/api/health`.
+4. Review the Blueprint configuration and deploy. Render generates separate `SESSION_SECRET` and `DATA_ENCRYPTION_KEY` values; the service uses HTTPS, trusts Render's proxy, and checks `/api/health`.
 5. After deployment, Render provides a public `onrender.com` service URL. Open that URL and sign in at `/workspace`. Share that deployed URL—not a localhost address—with other people.
 
-The local `data/` directory remains the default when `DATA_DIR` is unset; Render sets `DATA_DIR=/var/data` to use its persistent disk. Keep the disk attached and do not change its mount path if you want to retain existing application data. This deployment is configured for one running instance: sessions use Express's in-memory store, so scaling to multiple instances or using sessions that survive restarts requires a shared session store. Back up important data separately; a persistent disk is not a backup.
+The local `data/` directory remains the default when `DATA_DIR` is unset; Render sets `DATA_DIR=/var/data` to use its persistent disk. Keep the disk attached and do not change its mount path if you want to retain existing application data. Keep `DATA_ENCRYPTION_KEY` backed up in a secure password manager or secret manager; losing or rotating it without re-encrypting the data makes stored records and files unrecoverable. Back up the data disk and key separately, and test restoring them before entering important records.
+
+The configured service is intended for a **single small workspace on one running instance**. Sessions use Express's in-memory store, so all users will need to sign in again after a restart; do not scale to multiple instances. Production registration is disabled to prevent arbitrary sign-ups from viewing shared workspace records. An admin can create an `ops`, `analyst`, or `viewer` account through the authenticated `POST /api/admin/users` endpoint. Public sign-up remains available for local development.
+
+**If you already created a Web Service manually**, pushing a change to `render.yaml` does not automatically add its environment variables. In that service's **Environment** settings, add `NODE_ENV=production`, `TRUST_PROXY=1`, `DATA_DIR=/var/data`, a unique `SESSION_SECRET` (at least 32 bytes), a separate `DATA_ENCRYPTION_KEY` (at least 32 bytes), and the initial admin email/password when creating a fresh data disk. Attach a persistent disk at `/var/data`. Generate secrets in Render, keep them private, and preserve the encryption key and disk across deploys. Alternatively, create/manage the service as a Blueprint so Render applies the values in `render.yaml`. Never replace the production secret checks with hard-coded fallback values.
 
 ## Optional AI assistant
 
@@ -177,14 +183,14 @@ Without `AI_API_KEY`, other features remain available and the assistant displays
 
 The public website checkup is intentionally limited to one HTTP(S) request to a public domain on its standard port, after the visitor confirms authorization. It rejects private/non-public destinations, does not follow redirects, and is rate-limited to six requests per client IP per 15 minutes. Its response-header observations are informational, not a vulnerability assessment or a security audit. Public CSV analysis happens in the visitor's browser and does not upload the selected CSV.
 
-For production deployment:
+Production deployment configuration:
 
 1. Set `NODE_ENV=production` and configure `SESSION_SECRET` to a unique, randomly generated value.
-2. On the first start with no existing users, set `INITIAL_ADMIN_EMAIL` and a unique `INITIAL_ADMIN_PASSWORD` of at least 12 characters. `INITIAL_ADMIN_NAME` is optional.
-3. Serve the app over HTTPS. If it is behind a trusted TLS-terminating reverse proxy, set `TRUST_PROXY=1`.
-4. Configure production-grade persistence, backups, monitoring, and account recovery before storing real or regulated business data.
+2. Set `DATA_ENCRYPTION_KEY` to a separate, unique random secret of at least 32 bytes. Keep it stable and backed up separately from the data disk.
+3. On the first start with no existing users, set `INITIAL_ADMIN_EMAIL` and a unique `INITIAL_ADMIN_PASSWORD` of 12–72 bytes. `INITIAL_ADMIN_NAME` is optional. Team passwords must also be 12–72 bytes.
+4. Serve the app over HTTPS. If it is behind a trusted TLS-terminating reverse proxy, set `TRUST_PROXY=1`.
 
-This project currently uses Express's in-memory session store and local JSON/filesystem persistence. These are intended for development and a single local instance, not a production multi-instance service. Use a maintained shared session store, transactional database, and access-controlled encrypted object storage before handling production or regulated data. The runway calculator is an estimate based solely on user-entered values and is not financial advice.
+Workspace JSON files and CSV uploads are authenticated and encrypted at rest using AES-256-GCM. The encryption key is not stored alongside production data. Plaintext local JSON and uploaded CSVs are encrypted the first time the app starts after this upgrade. A persistent disk is not a backup; configure automatic backups, monitoring, an incident-response process, and restore tests. The app is a single-workspace product and does not provide tenant isolation, MFA, SSO, account recovery, or compliance certification. Have a qualified security/privacy professional review it before storing regulated, highly sensitive, or legally restricted data. The runway calculator is an estimate based solely on user-entered values and is not financial advice.
 
 A custom company-domain sign-in URL requires a domain you control, DNS pointed at a hosting provider, and an HTTPS deployment. The local `/workspace` address is not publicly reachable.
 

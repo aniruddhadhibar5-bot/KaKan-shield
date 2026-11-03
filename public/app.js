@@ -558,7 +558,7 @@ function renderFileVault(files) {
       </div>
       <div class="file-actions">
         <span class="status-tag ${file.status === 'Encrypted' ? 'encrypted' : 'protected'}">${escapeHTML(file.status)}</span>
-        ${canManageWorkspace() ? `<button class="mini-btn" data-file-id="${escapeHTML(file.id)}" type="button">${file.status === 'Encrypted' ? 'Unprotect' : 'Protect'}</button>` : ''}
+        ${canManageWorkspace() ? `<button class="mini-btn" data-file-id="${escapeHTML(file.id)}" type="button">${file.status === 'Encrypted' ? 'Verify encryption' : 'Encrypt at rest'}</button>` : ''}
       </div>
     </div>
   `).join('');
@@ -759,6 +759,15 @@ async function initSession() {
   if (!isWorkspaceRoute) {
     showDashboard(false);
     return;
+  }
+
+  try {
+    const authConfig = await fetchJson('/api/auth/config');
+    const registrationButton = document.querySelector('.auth-mode-btn[data-mode="register"]');
+    if (registrationButton) registrationButton.classList.toggle('hidden', !authConfig.registrationEnabled);
+    if (!authConfig.registrationEnabled && state.authMode === 'register') setAuthMode('login');
+  } catch {
+    setAuthMode('login');
   }
 
   try {

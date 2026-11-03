@@ -16,6 +16,8 @@ services:
         value: "1"
       - key: DATA_DIR
         value: /var/data
+      - key: DATA_ENCRYPTION_KEY
+        generateValue: true
       - key: SESSION_SECRET
         generateValue: true
       - key: INITIAL_ADMIN_NAME

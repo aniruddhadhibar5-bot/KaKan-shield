@@ -6,20 +6,32 @@ const { after, before, test } = require('node:test');
 
 const originalDataDir = process.env.DATA_DIR;
 const originalSessionSecret = process.env.SESSION_SECRET;
+const originalDataEncryptionKey = process.env.DATA_ENCRYPTION_KEY;
 const originalNodeEnv = process.env.NODE_ENV;
 const testDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sentinel-business-shield-test-'));
 process.env.DATA_DIR = testDataDir;
 process.env.SESSION_SECRET = 'test-only-session-secret';
+process.env.DATA_ENCRYPTION_KEY = 'test-only-data-encryption-key-with-at-least-32-bytes';
 process.env.NODE_ENV = 'test';
 
-const { app, loadJson, saveJson, readCsvPreview, toCsv } = require('../server');
+const {
+  app,
+  loadJson,
+  saveJson,
+  readCsvPreview,
+  toCsv,
+  encryptData,
+  decryptData,
+  isEncryptedData,
+  migrateUploadedFiles,
+  isPublicRegistrationAllowed
+} = require('../server');
 if (originalDataDir === undefined) delete process.env.DATA_DIR;
 else process.env.DATA_DIR = originalDataDir;
 if (originalSessionSecret === undefined) delete process.env.SESSION_SECRET;
 else process.env.SESSION_SECRET = originalSessionSecret;
-if (originalNodeEnv === undefined) delete process.env.NODE_ENV;
-else process.env.NODE_ENV = originalNodeEnv;
-
+if (originalDataEncryptionKey === undefined) delete process.env.DATA_ENCRYPTION_KEY;
+else process.env.DATA_ENCRYPTION_KEY = originalDataEncryptionKey;
 let server;
 let baseUrl;
 
@@ -37,6 +49,8 @@ after(async () => {
     await new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
   }
   fs.rmSync(testDataDir, { recursive: true, force: true });
+  if (originalNodeEnv === undefined) delete process.env.NODE_ENV;
+  else process.env.NODE_ENV = originalNodeEnv;
 });
 
 async function login(email, password) {
@@ -62,8 +76,15 @@ test('preserves corrupt JSON files and saves updates atomically', () => {
 
   const validFile = path.join(directory, 'valid.json');
   saveJson(validFile, { version: 1 });
+  assert.equal(isEncryptedData(fs.readFileSync(validFile)), true);
   saveJson(validFile, { version: 2 });
-  assert.deepEqual(JSON.parse(fs.readFileSync(validFile, 'utf8')), { version: 2 });
+  assert.deepEqual(loadJson(validFile, {}), { version: 2 });
+
+  const legacyFile = path.join(directory, 'legacy.json');
+  fs.writeFileSync(legacyFile, '{"legacy":true}');
+  assert.deepEqual(loadJson(legacyFile, {}), { legacy: true });
+  assert.equal(isEncryptedData(fs.readFileSync(legacyFile)), true);
+  assert.deepEqual(JSON.parse(decryptData(fs.readFileSync(legacyFile)).toString('utf8')), { legacy: true });
 
   const blockedTarget = path.join(directory, 'blocked.json');
   fs.mkdirSync(blockedTarget);
@@ -71,6 +92,22 @@ test('preserves corrupt JSON files and saves updates atomically', () => {
   assert.throws(() => saveJson(blockedTarget, { version: 3 }));
   assert.equal(fs.readFileSync(path.join(blockedTarget, 'preserve.txt'), 'utf8'), 'keep');
   assert.equal(fs.readdirSync(directory).some((name) => name.startsWith('.blocked.json.')), false);
+});
+
+test('encrypts legacy uploaded CSVs and rejects tampered ciphertext', () => {
+  const uploadPath = path.join(testDataDir, 'uploads', 'legacy-upload.csv');
+  const original = Buffer.from('name,email\nExample,person@example.test\n');
+  fs.writeFileSync(uploadPath, original);
+  const metadata = [{ storedName: path.basename(uploadPath), status: 'Protected' }];
+  migrateUploadedFiles(metadata);
+  const encrypted = fs.readFileSync(uploadPath);
+  assert.equal(isEncryptedData(encrypted), true);
+  assert.deepEqual(decryptData(encrypted), original);
+  assert.equal(metadata[0].status, 'Encrypted');
+
+  const tampered = Buffer.from(encryptData(original));
+  tampered[tampered.length - 1] ^= 0xff;
+  assert.throws(() => decryptData(tampered));
 });
 
 test('parses quoted CSV previews, embedded newlines and escaped quotes', () => {
@@ -156,6 +193,83 @@ test('operations accounts retain permission to manage shared workspace data', as
   assert.equal((await response.json()).task.title, 'Authorized operations task');
 });
 
+test('production registration is disabled and admins can provision team accounts', async () => {
+  assert.equal(isPublicRegistrationAllowed('production'), false);
+  assert.equal(isPublicRegistrationAllowed('development'), true);
+
+  const originalEnvironment = process.env.NODE_ENV;
+  process.env.NODE_ENV = 'production';
+  try {
+    const registrationResponse = await fetch(`${baseUrl}/api/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Uninvited User',
+        email: 'uninvited@example.test',
+        password: 'a-long-unique-password'
+      })
+    });
+    assert.equal(registrationResponse.status, 403);
+  } finally {
+    process.env.NODE_ENV = originalEnvironment;
+  }
+
+  const adminCookie = await login('admin@northstar.com', 'Shield@2026!');
+  const response = await fetch(`${baseUrl}/api/admin/users`, {
+    method: 'POST',
+    headers: { Cookie: adminCookie, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      name: 'Team Analyst',
+      email: 'team.analyst@example.test',
+      password: 'a-long-unique-team-password',
+      role: 'analyst'
+    })
+  });
+  assert.equal(response.status, 201);
+  const result = await response.json();
+  assert.equal(result.user.role, 'analyst');
+  assert.equal(JSON.stringify(result).includes('a-long-unique-team-password'), false);
+
+  const duplicateResponse = await fetch(`${baseUrl}/api/admin/users`, {
+    method: 'POST',
+    headers: { Cookie: adminCookie, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      name: 'Duplicate User',
+      email: 'team.analyst@example.test',
+      password: 'another-long-unique-password',
+      role: 'viewer'
+    })
+  });
+  assert.equal(duplicateResponse.status, 409);
+
+  const viewerCookie = await login('viewer@example.test', 'viewer-test-password');
+  const deniedResponse = await fetch(`${baseUrl}/api/admin/users`, {
+    method: 'POST',
+    headers: { Cookie: viewerCookie, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      name: 'Unauthorized User',
+      email: 'unauthorized@example.test',
+      password: 'another-long-unique-password',
+      role: 'viewer'
+    })
+  });
+  assert.equal(deniedResponse.status, 403);
+});
+
+test('new accounts require long passwords and valid email addresses', async () => {
+  for (const body of [
+    { name: 'Short Password', email: 'valid@example.test', password: 'short' },
+    { name: 'Invalid Email', email: 'not-an-email', password: 'a-long-unique-password' }
+  ]) {
+    const response = await fetch(`${baseUrl}/api/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    assert.equal(response.status, 400);
+  }
+});
+
 test('admins can upload valid CSVs and export client values as inert cells', async () => {
   const cookie = await login('admin@northstar.com', 'Shield@2026!');
   const maliciousValue = '=HYPERLINK("https://example.test","open")';
@@ -179,10 +293,20 @@ test('admins can upload valid CSVs and export client values as inert cells', asy
   const uploadResponse = await fetch(`${baseUrl}/api/files/upload`, { method: 'POST', headers: { Cookie: cookie }, body: form });
   assert.equal(uploadResponse.status, 200);
   const uploadResult = await uploadResponse.json();
+  assert.equal(uploadResult.file.status, 'Encrypted');
   assert.deepEqual(uploadResult.file.preview, [
     ['name', 'city', 'note'],
     ['Ada, Inc.', 'London', 'She said "hello"']
   ]);
+  const uploadedPath = path.join(testDataDir, 'uploads', uploadResult.file.storedName);
+  const storedUpload = fs.readFileSync(uploadedPath);
+  assert.equal(isEncryptedData(storedUpload), true);
+  assert.equal(storedUpload.includes(Buffer.from('Ada, Inc.')), false);
+  const downloadResponse = await fetch(`${baseUrl}/api/files/${uploadResult.file.id}/download`, {
+    headers: { Cookie: cookie }
+  });
+  assert.equal(downloadResponse.status, 200);
+  assert.equal(await downloadResponse.text(), 'name,city,note\r\n"Ada, Inc.",London,"She said ""hello"""');
 
   const malformedForm = new FormData();
   malformedForm.append('file', new Blob(['name,city\n"Unclosed,London'], { type: 'text/csv' }), 'broken.csv');

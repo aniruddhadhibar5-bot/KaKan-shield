@@ -6,7 +6,8 @@ const multer = require('multer');
 const bcrypt = require('bcryptjs');
 const fs = require('fs');
 const path = require('path');
-const { randomUUID } = require('node:crypto');
+const crypto = require('node:crypto');
+const { randomUUID } = crypto;
 const dns = require('node:dns/promises');
 const http = require('node:http');
 const https = require('node:https');
@@ -18,6 +19,10 @@ const sessionSecret = process.env.SESSION_SECRET;
 if (process.env.NODE_ENV === 'production' && !sessionSecret) {
   throw new Error('SESSION_SECRET must be configured when NODE_ENV=production');
 }
+if (process.env.NODE_ENV === 'production' && Buffer.byteLength(sessionSecret) < 32) {
+  throw new Error('SESSION_SECRET must contain at least 32 bytes when NODE_ENV=production');
+}
+const encryptedDataMarker = Buffer.from('SBSENC1');
 const rootDir = __dirname;
 const dataDir = process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : path.join(rootDir, 'data');
 const uploadsDir = path.join(dataDir, 'uploads');
@@ -78,6 +83,45 @@ function ensureDirectories() {
   });
 }
 
+let dataEncryptionKey;
+
+function isEncryptedData(value) {
+  return value.length >= encryptedDataMarker.length
+    && value.subarray(0, encryptedDataMarker.length).equals(encryptedDataMarker);
+}
+
+function encryptData(value) {
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', dataEncryptionKey, iv);
+  const ciphertext = Buffer.concat([cipher.update(value), cipher.final()]);
+  return Buffer.concat([encryptedDataMarker, iv, cipher.getAuthTag(), ciphertext]);
+}
+
+function decryptData(value) {
+  if (!isEncryptedData(value)) return value;
+  const markerLength = encryptedDataMarker.length;
+  const iv = value.subarray(markerLength, markerLength + 12);
+  const authTag = value.subarray(markerLength + 12, markerLength + 28);
+  const ciphertext = value.subarray(markerLength + 28);
+  const decipher = crypto.createDecipheriv('aes-256-gcm', dataEncryptionKey, iv);
+  decipher.setAuthTag(authTag);
+  return Buffer.concat([decipher.update(ciphertext), decipher.final()]);
+}
+
+function writeAtomically(filePath, value) {
+  const temporaryPath = path.join(
+    path.dirname(filePath),
+    `.${path.basename(filePath)}.${process.pid}.${randomUUID()}.tmp`
+  );
+  try {
+    fs.writeFileSync(temporaryPath, value, { flag: 'wx', mode: 0o600 });
+    fs.renameSync(temporaryPath, filePath);
+  } catch (error) {
+    if (fs.existsSync(temporaryPath)) fs.unlinkSync(temporaryPath);
+    throw error;
+  }
+}
+
 function loadJson(filePath, fallback) {
   if (!fs.existsSync(filePath)) {
     saveJson(filePath, fallback);
@@ -85,26 +129,86 @@ function loadJson(filePath, fallback) {
   }
 
   try {
-    const raw = fs.readFileSync(filePath, 'utf8');
+    const storedValue = fs.readFileSync(filePath);
+    const encrypted = isEncryptedData(storedValue);
+    const raw = decryptData(storedValue).toString('utf8');
     if (!raw.trim()) throw new SyntaxError('The file is empty.');
-    return JSON.parse(raw);
+    const value = JSON.parse(raw);
+    if (!encrypted) saveJson(filePath, value);
+    return value;
   } catch (error) {
     throw new Error(`Unable to read valid JSON from ${filePath}; the existing file was left unchanged.`, { cause: error });
   }
 }
 
 function saveJson(filePath, value) {
-  const temporaryPath = path.join(
-    path.dirname(filePath),
-    `.${path.basename(filePath)}.${process.pid}.${randomUUID()}.tmp`
-  );
-  try {
-    fs.writeFileSync(temporaryPath, JSON.stringify(value, null, 2), { flag: 'wx' });
-    fs.renameSync(temporaryPath, filePath);
-  } catch (error) {
-    if (fs.existsSync(temporaryPath)) fs.unlinkSync(temporaryPath);
-    throw error;
+  writeAtomically(filePath, encryptData(Buffer.from(JSON.stringify(value, null, 2), 'utf8')));
+}
+
+function resolveDataEncryptionKey() {
+  const configuredKey = process.env.DATA_ENCRYPTION_KEY;
+  if (configuredKey) {
+    if (Buffer.byteLength(configuredKey, 'utf8') < 32) {
+      throw new Error('DATA_ENCRYPTION_KEY must contain at least 32 bytes');
+    }
+    return crypto.createHash('sha256').update(configuredKey, 'utf8').digest();
   }
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('DATA_ENCRYPTION_KEY must be configured when NODE_ENV=production');
+  }
+
+  const keyFile = path.join(dataDir, '.data-encryption-key');
+  try {
+    const storedKey = fs.readFileSync(keyFile, 'utf8').trim();
+    if (!/^[\da-f]{64}$/i.test(storedKey)) {
+      throw new Error('The local data encryption key file is invalid.');
+    }
+    return Buffer.from(storedKey, 'hex');
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+  }
+
+  const generatedKey = crypto.randomBytes(32);
+  try {
+    fs.writeFileSync(keyFile, generatedKey.toString('hex'), { flag: 'wx', mode: 0o600 });
+    return generatedKey;
+  } catch (error) {
+    if (error.code !== 'EEXIST') throw error;
+    const storedKey = fs.readFileSync(keyFile, 'utf8').trim();
+    if (!/^[\da-f]{64}$/i.test(storedKey)) {
+      throw new Error('The local data encryption key file is invalid.');
+    }
+    return Buffer.from(storedKey, 'hex');
+  }
+}
+
+function getStoredUploadPath(storedName) {
+  if (
+    typeof storedName !== 'string'
+    || !storedName
+    || storedName !== path.basename(storedName)
+    || storedName.includes('\\')
+  ) {
+    return null;
+  }
+  return path.join(uploadsDir, storedName);
+}
+
+function migrateUploadedFiles(files) {
+  let changed = false;
+  for (const file of files) {
+    const uploadPath = getStoredUploadPath(file.storedName);
+    if (!uploadPath || !fs.existsSync(uploadPath)) continue;
+    const storedValue = fs.readFileSync(uploadPath);
+    if (!isEncryptedData(storedValue)) {
+      writeAtomically(uploadPath, encryptData(storedValue));
+      file.status = 'Encrypted';
+      changed = true;
+    } else {
+      decryptData(storedValue);
+    }
+  }
+  if (changed) saveJson(filesFile, files);
 }
 
 function normalizeEmail(email) {
@@ -162,14 +266,14 @@ function formatBytes(bytes) {
   return `${value.toFixed(value >= 10 || unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
 }
 
-function readCsvPreview(filePath, maxRows = 8) {
-  if (!fs.existsSync(filePath)) return [];
-  const content = fs.readFileSync(filePath, 'utf8').replace(/^\uFEFF/, '');
+function parseCsvPreview(content, maxRows = 8) {
+  content = content.replace(/^\uFEFF/, '');
   const rows = [];
   let row = [];
   let cell = '';
   let quoted = false;
   let afterQuote = false;
+  let totalRows = 0;
 
   function finishCell() {
     row.push(cell.trim());
@@ -179,11 +283,15 @@ function readCsvPreview(filePath, maxRows = 8) {
 
   function finishRow() {
     finishCell();
-    if (row.some((value) => value !== '')) rows.push(row);
+    if (row.some((value) => value !== '')) {
+      totalRows += 1;
+      if (totalRows > 100_000) throw new Error('CSV exceeds the 100,000-row limit.');
+      if (rows.length < maxRows) rows.push(row);
+    }
     row = [];
   }
 
-  for (let index = 0; index < content.length && rows.length < maxRows; index += 1) {
+  for (let index = 0; index < content.length; index += 1) {
     const character = content[index];
     if (quoted) {
       if (character === '"' && content[index + 1] === '"') {
@@ -219,9 +327,14 @@ function readCsvPreview(filePath, maxRows = 8) {
     }
   }
 
-  if (quoted && rows.length < maxRows) throw new Error('CSV contains an unclosed quoted field.');
-  if (rows.length < maxRows && (cell || row.length || afterQuote)) finishRow();
+  if (quoted) throw new Error('CSV contains an unclosed quoted field.');
+  if (cell || row.length || afterQuote) finishRow();
   return rows;
+}
+
+function readCsvPreview(filePath, maxRows = 8) {
+  if (!fs.existsSync(filePath)) return [];
+  return parseCsvPreview(fs.readFileSync(filePath, 'utf8'), maxRows);
 }
 
 function generateId(prefix) {
@@ -253,6 +366,7 @@ function toCsv(rows) {
 }
 
 ensureDirectories();
+dataEncryptionKey = resolveDataEncryptionKey();
 
 let users = loadJson(usersFile, process.env.NODE_ENV === 'production' ? [] : defaultUsers).map((user) => ({
   ...user,
@@ -262,12 +376,13 @@ let users = loadJson(usersFile, process.env.NODE_ENV === 'production' ? [] : def
 let clients = loadJson(clientsFile, seededClients);
 let fileVault = loadJson(filesFile, seededFiles);
 let startupData = loadJson(startupFile, emptyStartupData);
+migrateUploadedFiles(fileVault);
 
 if (process.env.NODE_ENV === 'production' && users.length === 0) {
   const adminEmail = normalizeEmail(process.env.INITIAL_ADMIN_EMAIL);
   const adminPassword = process.env.INITIAL_ADMIN_PASSWORD || '';
-  if (!adminEmail || adminPassword.length < 12) {
-    throw new Error('Set INITIAL_ADMIN_EMAIL and an INITIAL_ADMIN_PASSWORD of at least 12 characters for the first production start');
+  if (!adminEmail || Buffer.byteLength(adminPassword, 'utf8') < 12 || Buffer.byteLength(adminPassword, 'utf8') > 72) {
+    throw new Error('Set INITIAL_ADMIN_EMAIL and an INITIAL_ADMIN_PASSWORD of 12 to 72 bytes for the first production start');
   }
 
   users = [{
@@ -618,8 +733,8 @@ app.use(helmet({
   }
 }));
 
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '1mb' }));
+app.use(express.urlencoded({ extended: true, limit: '64kb', parameterLimit: 100 }));
 if (process.env.TRUST_PROXY === '1') {
   app.set('trust proxy', 1);
 }
@@ -644,6 +759,10 @@ app.use('/api', rateLimit({
   legacyHeaders: false,
   message: { ok: false, message: 'Too many requests. Please slow down.' }
 }));
+app.use('/api', (_req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store');
+  next();
+});
 
 const publicSiteCheckLimit = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -653,15 +772,44 @@ const publicSiteCheckLimit = rateLimit({
   message: { ok: false, message: 'Website check limit reached. Try again in 15 minutes.' }
 });
 
-const upload = multer({
-  storage: multer.diskStorage({
-    destination: (_req, _file, cb) => cb(null, uploadsDir),
-    filename: (_req, file, cb) => {
-      const safeName = file.originalname.replace(/\s+/g, '-');
-      cb(null, `${Date.now()}-${safeName}`);
+const authRateLimit = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: () => process.env.NODE_ENV === 'test',
+  message: { ok: false, message: 'Too many authentication attempts. Try again in 15 minutes.' }
+});
+
+function isPublicRegistrationAllowed(nodeEnv = process.env.NODE_ENV) {
+  return nodeEnv !== 'production';
+}
+
+function establishAuthenticatedSession(req, res, user, statusCode = 200) {
+  req.session.regenerate((error) => {
+    if (error) {
+      console.error('Unable to rotate the session after authentication.');
+      return res.status(500).json({ ok: false, message: 'Unable to start a secure session. Please try again.' });
     }
-  }),
-  limits: { fileSize: 10 * 1024 * 1024 },
+
+    req.session.user = {
+      ...user,
+      role: normalizeUserRole(user.role),
+      title: user.title || user.role || 'Business user'
+    };
+    req.session.save((saveError) => {
+      if (saveError) {
+        console.error('Unable to save the authenticated session.');
+        return res.status(500).json({ ok: false, message: 'Unable to start a secure session. Please try again.' });
+      }
+      return res.status(statusCode).json({ ok: true, user: getSafeUser(req.session.user) });
+    });
+  });
+}
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024, files: 1, fields: 0, parts: 1 },
   fileFilter: (_req, file, cb) => {
     if (file.mimetype === 'text/csv' || /\.csv$/i.test(file.originalname)) {
       cb(null, true);
@@ -684,11 +832,7 @@ app.get('/api/health', (_req, res) => {
   res.json({
     status: 'healthy',
     service: 'Sentinel Business Shield',
-    authenticated: false,
-    storage: 'local-json',
-    userCount: users.length,
-    clientCount: clients.length,
-    fileCount: fileVault.length
+    authenticated: false
   });
 });
 
@@ -816,17 +960,28 @@ app.get('/api/auth/me', (req, res) => {
   res.json({ ok: true, user });
 });
 
-app.post('/api/auth/register', (req, res) => {
+app.get('/api/auth/config', (_req, res) => {
+  res.json({ registrationEnabled: isPublicRegistrationAllowed() });
+});
+
+app.post('/api/auth/register', authRateLimit, (req, res) => {
+  if (!isPublicRegistrationAllowed()) {
+    return res.status(403).json({ ok: false, message: 'Public registration is disabled. Ask your workspace administrator for an account.' });
+  }
+
   const name = String(req.body?.name || '').trim();
   const email = normalizeEmail(req.body?.email);
   const password = String(req.body?.password || '');
 
-  if (!email || !password) {
-    return res.status(400).json({ ok: false, message: 'Email and password are required' });
-  }
-
-  if (password.length < 8) {
-    return res.status(400).json({ ok: false, message: 'Password must be at least 8 characters' });
+  if (
+    !email
+    || email.length > 254
+    || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+    || name.length > 100
+    || Buffer.byteLength(password, 'utf8') < 12
+    || Buffer.byteLength(password, 'utf8') > 72
+  ) {
+    return res.status(400).json({ ok: false, message: 'Provide a valid email, a name up to 100 characters, and a password between 12 and 72 bytes.' });
   }
 
   if (users.some((user) => normalizeEmail(user.email) === email)) {
@@ -842,17 +997,16 @@ app.post('/api/auth/register', (req, res) => {
     country: 'Global',
     city: 'Remote',
     timezone: 'UTC',
-    passwordHash: bcrypt.hashSync(password, 10)
+    passwordHash: bcrypt.hashSync(password, 12)
   };
 
-  users.push(newUser);
-  saveJson(usersFile, users);
-  req.session.user = newUser;
-
-  return res.status(201).json({ ok: true, user: getSafeUser(newUser) });
+  const updatedUsers = [...users, newUser];
+  saveJson(usersFile, updatedUsers);
+  users = updatedUsers;
+  return establishAuthenticatedSession(req, res, newUser, 201);
 });
 
-app.post('/api/auth/login', (req, res) => {
+app.post('/api/auth/login', authRateLimit, (req, res) => {
   const email = normalizeEmail(req.body?.email);
   const password = String(req.body?.password || '');
 
@@ -861,12 +1015,7 @@ app.post('/api/auth/login', (req, res) => {
     return res.status(401).json({ ok: false, message: 'Invalid email or password' });
   }
 
-  req.session.user = {
-    ...user,
-    role: normalizeUserRole(user.role),
-    title: user.title || user.role || 'Business user'
-  };
-  return res.json({ ok: true, user: getSafeUser(req.session.user) });
+  return establishAuthenticatedSession(req, res, user);
 });
 
 app.post('/api/auth/logout', (req, res) => {
@@ -1032,6 +1181,43 @@ app.get('/api/users', ensureAuthenticated, requireRole('admin', 'ops'), (_req, r
   });
 });
 
+app.post('/api/admin/users', ensureAuthenticated, requireRole('admin'), (req, res) => {
+  const name = String(req.body?.name || '').trim();
+  const email = normalizeEmail(req.body?.email);
+  const password = String(req.body?.password || '');
+  const role = String(req.body?.role || 'viewer').toLowerCase();
+  if (
+    !name
+    || name.length > 100
+    || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+    || email.length > 254
+    || Buffer.byteLength(password, 'utf8') < 12
+    || Buffer.byteLength(password, 'utf8') > 72
+    || !['ops', 'analyst', 'viewer'].includes(role)
+  ) {
+    return res.status(400).json({ ok: false, message: 'Provide a valid name, email, password between 12 and 72 bytes, and role (ops, analyst, or viewer).' });
+  }
+  if (users.some((user) => normalizeEmail(user.email) === email)) {
+    return res.status(409).json({ ok: false, message: 'An account with this email already exists.' });
+  }
+
+  const newUser = {
+    id: generateId('user'),
+    name,
+    email,
+    role,
+    title: role === 'ops' ? 'Operations' : role === 'analyst' ? 'Research Analyst' : 'Business user',
+    country: 'Global',
+    city: 'Remote',
+    timezone: 'UTC',
+    passwordHash: bcrypt.hashSync(password, 12)
+  };
+  const updatedUsers = [...users, newUser];
+  saveJson(usersFile, updatedUsers);
+  users = updatedUsers;
+  return res.status(201).json({ ok: true, user: getSafeUser(newUser) });
+});
+
 app.get('/api/admin/overview', ensureAuthenticated, requireRole('admin', 'ops'), (req, res) => {
   const userSummary = users.map((user) => ({
     id: user.id,
@@ -1061,14 +1247,13 @@ app.get('/api/files/:id/download', ensureAuthenticated, (req, res) => {
     return res.status(404).json({ ok: false, message: 'File not found' });
   }
 
-  const safeName = file.storedName || file.name;
-  const uploadPath = path.join(uploadsDir, safeName);
-  const csvContent = fs.existsSync(uploadPath)
-    ? fs.readFileSync(uploadPath, 'utf8')
+  const uploadPath = getStoredUploadPath(file.storedName);
+  const csvContent = uploadPath && fs.existsSync(uploadPath)
+    ? decryptData(fs.readFileSync(uploadPath)).toString('utf8')
     : (Array.isArray(file.preview) ? file.preview.map((row) => row.join(',')).join('\n') : '');
 
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-  res.setHeader('Content-Disposition', `attachment; filename="${file.name}"`);
+  res.attachment(path.basename(file.name));
   return res.send(csvContent || '');
 });
 
@@ -1113,25 +1298,43 @@ app.post('/api/files/upload', ensureAuthenticated, requireRole('admin', 'ops'), 
 
     let preview;
     try {
-      preview = readCsvPreview(uploadedFile.path, 8);
+      const csvContent = new TextDecoder('utf-8', { fatal: true }).decode(uploadedFile.buffer);
+      preview = parseCsvPreview(csvContent, 8);
+      if (!preview.length) throw new Error('CSV must contain a header row and at least one non-empty field.');
     } catch (parseError) {
-      fs.unlinkSync(uploadedFile.path);
       return res.status(400).json({ ok: false, message: parseError.message || 'The CSV file is malformed.' });
     }
+
+    const storedName = `${randomUUID()}.csv`;
+    const uploadPath = getStoredUploadPath(storedName);
+    try {
+      writeAtomically(uploadPath, encryptData(uploadedFile.buffer));
+    } catch (storageError) {
+      console.error('Unable to store an encrypted CSV upload.');
+      return res.status(500).json({ ok: false, message: 'The CSV could not be stored securely. Please try again.' });
+    }
+
     const entry = {
       id: generateId('file'),
-      name: uploadedFile.originalname,
-      storedName: uploadedFile.filename,
+      name: path.basename(uploadedFile.originalname).replace(/[\r\n"]/g, '_'),
+      storedName,
       size: formatBytes(uploadedFile.size),
       owner: req.session.user.name,
-      status: 'Protected',
+      status: 'Encrypted',
       updated: 'just now',
       risk: 'Low',
       preview
     };
 
-    fileVault.unshift(entry);
-    saveJson(filesFile, fileVault);
+    const updatedFiles = [entry, ...fileVault];
+    try {
+      saveJson(filesFile, updatedFiles);
+      fileVault = updatedFiles;
+    } catch (storageError) {
+      fs.unlinkSync(uploadPath);
+      console.error('Unable to save metadata for an encrypted CSV upload.');
+      return res.status(500).json({ ok: false, message: 'The CSV could not be saved. Please try again.' });
+    }
     return res.json({ ok: true, file: entry });
   });
 });
@@ -1142,7 +1345,18 @@ app.post('/api/files/:id/secure', ensureAuthenticated, requireRole('admin', 'ops
     return res.status(404).json({ ok: false, message: 'File not found' });
   }
 
-  file.status = file.status === 'Encrypted' ? 'Protected' : 'Encrypted';
+  const uploadPath = getStoredUploadPath(file.storedName);
+  if (uploadPath && fs.existsSync(uploadPath)) {
+    const storedValue = fs.readFileSync(uploadPath);
+    if (isEncryptedData(storedValue)) {
+      decryptData(storedValue);
+    } else {
+      const legacyContent = storedValue.toString('utf8');
+      parseCsvPreview(legacyContent, 8);
+      writeAtomically(uploadPath, encryptData(storedValue));
+    }
+  }
+  file.status = 'Encrypted';
   file.risk = 'Low';
   file.updated = 'just now';
   saveJson(filesFile, fileVault);
@@ -1240,10 +1454,14 @@ app.get(/^(?!\/api).*$/, (_req, res) => {
 });
 
 app.use((error, _req, res, _next) => {
-  if (error && error.message) {
-    return res.status(400).json({ ok: false, message: error.message });
+  if (Number(error?.status) === 413) {
+    return res.status(413).json({ ok: false, message: 'Request body exceeds the allowed size.' });
   }
-  return res.status(500).json({ ok: false, message: 'Internal server error' });
+  if (Number(error?.status) >= 400 && Number(error?.status) < 500) {
+    return res.status(Number(error.status)).json({ ok: false, message: 'Invalid request.' });
+  }
+  console.error('Unhandled request error:', error);
+  return res.status(500).json({ ok: false, message: 'Internal server error.' });
 });
 
 if (require.main === module) {
@@ -1252,4 +1470,15 @@ if (require.main === module) {
   });
 }
 
-module.exports = { app, loadJson, saveJson, readCsvPreview, toCsv };
+module.exports = {
+  app,
+  loadJson,
+  saveJson,
+  readCsvPreview,
+  toCsv,
+  encryptData,
+  decryptData,
+  isEncryptedData,
+  migrateUploadedFiles,
+  isPublicRegistrationAllowed
+};
