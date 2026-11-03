@@ -2,11 +2,11 @@
 
 # Sentinel Business Shield
 
-### A focused command center for startup security signals and business operations.
+### Security signals and startup operations, together in one command center.
 
-Manage client records, review security indicators, organize files, track startup work, and estimate financial runway in one locally runnable web application.
+Track clients, security indicators, files, team work, and financial runway in one responsive web application. Run it locally or open the live demo.
 
-[![Node.js](https://img.shields.io/badge/Node.js-20%2B-339933?logo=nodedotjs&logoColor=white)](https://nodejs.org/)
+[![Node.js](https://img.shields.io/badge/Node.js-22%2B-339933?logo=nodedotjs&logoColor=white)](https://nodejs.org/)
 [![Express](https://img.shields.io/badge/Express-5-000000?logo=express&logoColor=white)](https://expressjs.com/)
 [![JavaScript](https://img.shields.io/badge/JavaScript-ES2022%2B-F7DF1E?logo=javascript&logoColor=000000)](https://developer.mozilla.org/docs/Web/JavaScript)
 [![Rust](https://img.shields.io/badge/Rust-CSV%20CLI-000000?logo=rust&logoColor=white)](https://www.rust-lang.org/)
@@ -14,9 +14,11 @@ Manage client records, review security indicators, organize files, track startup
 [![Dart](https://img.shields.io/badge/Dart-Health%20client-0175C2?logo=dart&logoColor=white)](https://dart.dev/)
 [![License: ISC](https://img.shields.io/badge/License-ISC-blue.svg)](./package.json)
 
-[**Run locally:** http://localhost:3000](#run-locally) · [Open the workspace: http://localhost:3000/workspace](#run-locally)
+[![Open live demo](https://img.shields.io/badge/Live%20demo-Open%20Sentinel-6C5CE7?style=for-the-badge)](https://kakan-shield-4.onrender.com/)
 
-[Explore the features](#features) · [Run locally](#run-locally) · [Technology stack](#technology-stack) · [Security notes](#security-and-deployment)
+**[Launch the live demo](https://kakan-shield-4.onrender.com/)** · [Run locally](#run-locally) · [Explore features](#features) · [Deploy on Render](#deploy-to-render)
+
+> **Demo notice:** The linked app runs on Render's Free plan without a persistent disk. It may sleep when idle, and its data can be lost on restart or redeploy. Use sample data only; do not enter real or sensitive business information.
 
 </div>
 
@@ -147,7 +149,9 @@ npm test
 
 ## Deploy to Render
 
-This repository includes a [`render.yaml`](./render.yaml) Blueprint configuration. It creates a Node.js web service with a 1 GB persistent disk mounted at `/var/data`, so account data, client records, application settings, and uploaded files survive service restarts and redeploys. The Blueprint uses Render's paid Starter service plan because persistent disks are not available on Free web services; check Render's current pricing before deploying.
+**Live demo:** [kakan-shield-4.onrender.com](https://kakan-shield-4.onrender.com/) is the current public demo. It runs on Render's Free plan without a persistent disk; it is for trying the interface with sample data, not for retaining data or running a business workspace.
+
+For a persistent deployment, this repository includes a [`render.yaml`](./render.yaml) Blueprint configuration. It creates a separate Node.js web service with a 1 GB persistent disk mounted at `/var/data`, so account data, client records, application settings, and uploaded files survive service restarts and redeploys. The Blueprint uses Render's paid Starter service plan because persistent disks are not available on Free web services; check Render's current pricing before deploying. Creating this Blueprint does not upgrade or replace the live Free demo.
 
 1. Push the project to a GitHub repository.
 2. In the [Render Dashboard](https://dashboard.render.com/), choose **New → Blueprint** and connect this repository. Select the `main` branch and confirm Render detects the root `render.yaml`.
@@ -159,7 +163,7 @@ The local `data/` directory remains the default when `DATA_DIR` is unset; Render
 
 The configured service is intended for a **single small workspace on one running instance**. Sessions use Express's in-memory store, so all users will need to sign in again after a restart; do not scale to multiple instances. Production registration is disabled to prevent arbitrary sign-ups from viewing shared workspace records. An admin can create an `ops`, `analyst`, or `viewer` account through the authenticated `POST /api/admin/users` endpoint. Public sign-up remains available for local development.
 
-**If you already created a Web Service manually**, pushing changes to `render.yaml` does not update that service's environment variables or disk. The previous manual service failed at startup because it lacked `SESSION_SECRET`. The simplest route is to create the Blueprint above; it creates a separately named service, so keep the old one until the new one passes its health check. If you continue using the manual service, configure every variable and disk listed above yourself. Keep generated secrets private and preserve the encryption key and disk across deploys. Never replace the production secret checks with hard-coded fallback values.
+**If you already created a Web Service manually**, pushing changes to `render.yaml` does not update that service's environment variables, plan, or disk. The live demo linked above is a separate Free service and has no persistent disk. The simplest route for persistent storage is to create the Blueprint above; it creates a separately named paid service. If you continue using a manually configured service, configure every variable and disk listed above yourself. Keep generated secrets private and preserve the encryption key and disk across deploys. Never replace the production secret checks with hard-coded fallback values.
 
 ## Optional AI assistant
 
@@ -201,4 +205,5 @@ A custom company-domain sign-in URL requires a domain you control, DNS pointed a
 - **Creator:** Aniruddha Dhibar
 - **License:** ISC — see [`package.json`](./package.json)
 - **Local preview:** `http://localhost:3000` (available only while the app is running on your computer)
-- **Public deployment:** Deploy with Render using the steps above; Render provides the public URL after deployment.
+- **Live demo:** [https://kakan-shield-4.onrender.com](https://kakan-shield-4.onrender.com) — temporary Free instance; sample data only.
+- **Persistent deployment:** Follow the [Render Blueprint instructions](#deploy-to-render).
